@@ -5,22 +5,19 @@ import os
 os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
 import torch
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
 device = torch.device('cuda: 0' if torch.cuda.is_available() else 'cpu')
 
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn import Parameter
-import math
 import random
-import copy
 import torchvision
-from torchvision import transforms as T
+
 import pickle
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
-from torch.utils import data
+
 # from data import VehicleID_MC, VehicleID_All, id2name
 from tqdm import tqdm
 import matplotlib as mpl
@@ -33,172 +30,8 @@ from InitRepNet import InitRepNet
 mpl.rcParams['axes.unicode_minus'] = False
 mpl.rcParams['font.sans-serif'] = ['SimHei']
 
-
-# --------------------------------------
-# VehicleID用于MDNet
-class VehicleID_All(data.Dataset):
-    def __init__(self,
-                 root,
-                 transforms=None,
-                 mode='train'):
-        """
-        :param root:
-        :param transforms:
-        :param mode:
-        """
-        if not os.path.isdir(root):
-            print('[Err]: invalid root.')
-            return
-
-        # 加载图像绝对路径和标签
-        if mode == 'train':
-            txt_f_path = root + '/attribute/train_all.txt'
-        elif mode == 'test':
-            txt_f_path = root + '/attribute/test_all.txt'
-
-        if not os.path.isfile(txt_f_path):
-            print('=> [Err]: invalid txt file.')
-            return
-
-        # 打开vid2TrainID和trainID2Vid映射
-        vid2TrainID_path = root + '/attribute/vid2TrainID.pkl'
-        trainID2Vid_path = root + '/attribute/trainID2Vid.pkl'
-        if not (os.path.isfile(vid2TrainID_path) \
-                and os.path.isfile(trainID2Vid_path)):
-            print('=> [Err]: invalid vid, train_id mapping file path.')
-
-        with open(vid2TrainID_path, 'rb') as fh_1, \
-                open(trainID2Vid_path, 'rb') as fh_2:
-            self.vid2TrainID = pickle.load(fh_1)
-            self.trainID2Vid = pickle.load(fh_2)
-
-        self.imgs_path, self.lables = [], []
-        with open(txt_f_path, 'r', encoding='utf-8') as f_h:
-            for line in f_h.readlines():
-                line = line.strip().split()
-                img_path = root + '/image/' + line[0] + '.jpg'
-                if os.path.isfile(img_path):
-                    self.imgs_path.append(img_path)
-
-                    tr_id = self.vid2TrainID[int(line[3])]
-                    label = np.array([int(line[1]),
-                                      int(line[2]),
-                                      int(tr_id)], dtype=int)
-                    self.lables.append(torch.Tensor(label))
-
-        assert len(self.imgs_path) == len(self.lables)
-        print('=> total %d samples loaded in %s mode' % (len(self.imgs_path), mode))
-
-        # 加载数据变换
-        if transforms is not None:
-            self.transforms = transforms
-        else:
-            self.transforms = T.Compose([
-                T.Resize(224),
-                T.CenterCrop(224),
-                T.ToTensor(),
-                T.Normalize(mean=[0.485, 0.456, 0.406],
-                            std=[0.229, 0.224, 0.225])
-            ])
-
-    def __getitem__(self, idx):
-        """
-        关于数据缩放方式: 先默认使用非等比缩放
-        :param idx:
-        :return:
-        """
-        img = Image.open(self.imgs_path[idx])
-
-        # 数据变换, 灰度图转换成'RGB'
-        if img.mode == 'L' or img.mode == 'I':  # 8bit或32bit灰度图
-            img = img.convert('RGB')
-
-        # 图像数据变换
-        if self.transforms is not None:
-            img = self.transforms(img)
-
-        return img, self.lables[idx]
-
-    def __len__(self):
-        """
-        :return:
-        """
-        return len(self.imgs_path)
-
-
-# Vehicle ID用于车型和颜色的多标签分类
-class VehicleID_MC(data.Dataset):
-    def __init__(self,
-                 root,
-                 transforms=None,
-                 mode='train'):
-        """
-        :param root:
-        :param transforms:
-        :param mode:
-        """
-        if not os.path.isdir(root):
-            print('[Err]: invalid root.')
-            return
-
-        # 加载图像绝对路径和标签
-        if mode == 'train':
-            txt_f_path = root + '/attribute/train.txt'
-        elif mode == 'test':
-            txt_f_path = root + '/attribute/test.txt'
-
-        if not os.path.isfile(txt_f_path):
-            print('=> [Err]: invalid txt file.')
-            return
-
-        self.imgs_path, self.lables = [], []
-        with open(txt_f_path, 'r', encoding='utf-8') as f_h:
-            for line in f_h.readlines():
-                line = line.strip().split()
-                img_path = root + '/image/' + line[0] + '.jpg'
-                if os.path.isfile(img_path):
-                    self.imgs_path.append(img_path)
-                    label = np.array([int(line[1]), int(line[2])], dtype=int)
-                    self.lables.append(torch.Tensor(label))
-
-        assert len(self.imgs_path) == len(self.lables)
-        print('=> total %d samples loaded in %s mode' % (len(self.imgs_path), mode))
-
-        # 加载数据变换
-        if transforms is not None:
-            self.transforms = transforms
-        else:
-            self.transforms = T.Compose([
-                T.Resize(224),
-                T.CenterCrop(224),
-                T.ToTensor(),
-                T.Normalize(mean=[0.485, 0.456, 0.406],
-                            std=[0.229, 0.224, 0.225])
-            ])
-
-    def __getitem__(self, idx):
-        """
-        关于数据缩放方式: 先默认使用非等比缩放
-        :param idx:
-        :return:
-        """
-        img = Image.open(self.imgs_path[idx])
-
-        # 数据变换, 灰度图转换成'RGB'
-        if img.mode == 'L' or img.mode == 'I':  # 8bit或32bit灰度图
-            img = img.convert('RGB')
-
-        # 图像数据变换
-        if self.transforms is not None:
-            img = self.transforms(img)
-
-        return img, self.lables[idx]
-
-    def __len__(self):
-        """
-        :return:
-        """
-        return len(self.imgs_path)
+from network import RepNet
+from vehicleID_dataset import VehicleID_All, VehicleID_MC
 
 
 class FocalLoss(nn.Module):
@@ -228,550 +61,6 @@ class FocalLoss(nn.Module):
         p = torch.exp(-log_p)
         loss = (1.0 - p) ** self.gamma * log_p
         return loss.mean()
-
-
-# -----------------------------------FC layers
-class ArcFC(nn.Module):
-    r"""
-    Implement of large margin arc distance: :
-        Args:
-            in_features: size of each input sample
-            out_features: size of each output_layer sample
-            s: norm of input feature
-            m: margin
-
-            cos(theta + m)
-        """
-
-    def __init__(self,
-                 in_features,
-                 out_features,
-                 s=30.0,
-                 m=0.50,
-                 easy_margin=False):
-        """
-        ArcMargin
-        :param in_features:
-        :param out_features:
-        :param s:
-        :param m:
-        :param easy_margin:
-        """
-        super(ArcFC, self).__init__()
-        self.in_features = in_features
-        self.out_features = out_features
-        print('=> in dim: %d, out dim: %d' % (self.in_features, self.out_features))
-
-        self.s = s
-        self.m = m
-
-        # 根据输入输出dim确定初始化权重
-        self.weight = Parameter(torch.FloatTensor(out_features, in_features))
-        nn.init.xavier_uniform_(self.weight)
-
-        self.easy_margin = easy_margin
-        self.cos_m = math.cos(m)
-        self.sin_m = math.sin(m)
-        self.th = math.cos(math.pi - m)
-        self.mm = math.sin(math.pi - m) * m
-
-    def forward(self, input, label):
-        # --------------------------- cos(theta) & phi(theta) ---------------------------
-        # L2 normalize and calculate cosine
-        cosine = F.linear(F.normalize(input, p=2), F.normalize(self.weight, p=2))
-
-        sine = torch.sqrt(1.0 - torch.pow(cosine, 2))
-
-        # phi: cos(θ+m)
-        phi = cosine * self.cos_m - sine * self.sin_m
-
-        # ----- whether easy margin
-        if self.easy_margin:
-            phi = torch.where(cosine > 0, phi, cosine)
-        else:
-            phi = torch.where(cosine > self.th, phi, cosine - self.mm)
-
-        # --------------------------- convert label to one-hot ---------------------------
-        # one_hot = torch.zeros(cosine.size(), requires_grad=True, device='cuda')
-        one_hot = torch.zeros(cosine.size(), device=device)  # device='cuda'
-        one_hot.scatter_(1, label.view(-1, 1).long(), 1)
-
-        # -------------torch.where(out_i = {x_i if condition_i else y_i) -------------
-        # you can use torch.where if your torch.__version__ is 0.4
-        output = (one_hot * phi) + ((1.0 - one_hot) * cosine)
-        output *= self.s
-        # print(output_layer)
-
-        return output
-
-
-# ---------- Mixed Difference Network Structure base on vgg16
-class RepNet(torch.nn.Module):
-    def __init__(self,
-                 out_ids,
-                 out_attribs):
-        """
-        Network definition
-        :param out_ids:
-        :param out_attribs:
-        """
-        super(RepNet, self).__init__()
-
-        self.out_ids, self.out_attribs = out_ids, out_attribs
-        print('=> out_ids: %d, out_attribs: %d' % (self.out_ids, self.out_attribs))
-
-        # Conv1
-        self.conv1_1 = torch.nn.Conv2d(in_channels=3,
-                                       out_channels=64,
-                                       kernel_size=(3, 3),
-                                       stride=(1, 1),
-                                       padding=(1, 1))  # (0)
-        self.conv1_2 = torch.nn.ReLU(inplace=True)  # (1)
-        self.conv1_3 = torch.nn.Conv2d(in_channels=64,
-                                       out_channels=64,
-                                       kernel_size=(3, 3),
-                                       stride=(1, 1),
-                                       padding=(1, 1))  # (2)
-        self.conv1_4 = torch.nn.ReLU(inplace=True)  # (3)
-        self.conv1_5 = torch.nn.MaxPool2d(kernel_size=2,
-                                          stride=2,
-                                          padding=0,
-                                          dilation=1,
-                                          ceil_mode=False)  # (4)
-
-        self.conv1 = torch.nn.Sequential(
-            self.conv1_1,
-            self.conv1_2,
-            self.conv1_3,
-            self.conv1_4,
-            self.conv1_5
-        )
-
-        # Conv2
-        self.conv2_1 = torch.nn.Conv2d(in_channels=64,
-                                       out_channels=128,
-                                       kernel_size=(3, 3),
-                                       stride=(1, 1),
-                                       padding=(1, 1))  # (5)
-        self.conv2_2 = torch.nn.ReLU(inplace=True)  # (6)
-        self.conv2_3 = torch.nn.Conv2d(in_channels=128,
-                                       out_channels=128,
-                                       kernel_size=(3, 3),
-                                       stride=(1, 1),
-                                       padding=(1, 1))  # (7)
-        self.conv2_4 = torch.nn.ReLU(inplace=True)  # (8)
-        self.conv2_5 = torch.nn.MaxPool2d(kernel_size=2,
-                                          stride=2,
-                                          padding=0,
-                                          dilation=1,
-                                          ceil_mode=False)  # (9)
-
-        self.conv2 = torch.nn.Sequential(
-            self.conv2_1,
-            self.conv2_2,
-            self.conv2_3,
-            self.conv2_4,
-            self.conv2_5
-        )
-
-        # Conv3
-        self.conv3_1 = torch.nn.Conv2d(in_channels=128,
-                                       out_channels=256,
-                                       kernel_size=(3, 3),
-                                       stride=(1, 1),
-                                       padding=(1, 1))  # (10)
-        self.conv3_2 = torch.nn.ReLU(inplace=True)  # (11)
-        self.conv3_3 = torch.nn.Conv2d(in_channels=256,
-                                       out_channels=256,
-                                       kernel_size=(3, 3),
-                                       stride=(1, 1),
-                                       padding=(1, 1))  # (12)
-        self.conv3_4 = torch.nn.ReLU(inplace=True)  # (13)
-        self.conv3_5 = torch.nn.Conv2d(in_channels=256,
-                                       out_channels=256,
-                                       kernel_size=(3, 3),
-                                       stride=(1, 1),
-                                       padding=(1, 1))  # (14)
-        self.conv3_6 = torch.nn.ReLU(inplace=True)  # (15)
-        self.conv3_7 = torch.nn.MaxPool2d(kernel_size=2,
-                                          stride=2,
-                                          padding=0,
-                                          dilation=1,
-                                          ceil_mode=False)  # (16)
-
-        self.conv3 = torch.nn.Sequential(
-            self.conv3_1,
-            self.conv3_2,
-            self.conv3_3,
-            self.conv3_4,
-            self.conv3_5,
-            self.conv3_6,
-            self.conv3_7
-        )
-
-        # Conv4_1
-        self.conv4_1_1 = torch.nn.Conv2d(in_channels=256,
-                                         out_channels=512,
-                                         kernel_size=(3, 3),
-                                         stride=(1, 1),
-                                         padding=(1, 1))  # (17)
-        self.conv4_1_2 = torch.nn.ReLU(inplace=True)  # (18)
-        self.conv4_1_3 = torch.nn.Conv2d(in_channels=512,
-                                         out_channels=512,
-                                         kernel_size=(3, 3),
-                                         stride=(1, 1),
-                                         padding=(1, 1))  # (19)
-        self.conv4_1_4 = torch.nn.ReLU(inplace=True)  # (20)
-        self.conv4_1_5 = torch.nn.Conv2d(in_channels=512,
-                                         out_channels=512,
-                                         kernel_size=(3, 3),
-                                         stride=(1, 1),
-                                         padding=(1, 1))  # (21)
-        self.conv4_1_6 = torch.nn.ReLU(inplace=True)  # (22)
-        self.conv4_1_7 = torch.nn.MaxPool2d(kernel_size=2,
-                                            stride=2,
-                                            padding=0,
-                                            dilation=1,
-                                            ceil_mode=False)  # (23)
-
-        self.conv4_1 = torch.nn.Sequential(
-            self.conv4_1_1,
-            self.conv4_1_2,
-            self.conv4_1_3,
-            self.conv4_1_4,
-            self.conv4_1_5,
-            self.conv4_1_6,
-            self.conv4_1_7
-        )
-
-        # Conv4_2
-        self.conv4_2_1 = torch.nn.Conv2d(in_channels=256,
-                                         out_channels=512,
-                                         kernel_size=(3, 3),
-                                         stride=(1, 1),
-                                         padding=(1, 1))  # (17)
-        self.conv4_2_2 = torch.nn.ReLU(inplace=True)  # (18)
-        self.conv4_2_3 = torch.nn.Conv2d(in_channels=512,
-                                         out_channels=512,
-                                         kernel_size=(3, 3),
-                                         stride=(1, 1),
-                                         padding=(1, 1))  # (19)
-        self.conv4_2_4 = torch.nn.ReLU(inplace=True)  # (20)
-        self.conv4_2_5 = torch.nn.Conv2d(in_channels=512,
-                                         out_channels=512,
-                                         kernel_size=(3, 3),
-                                         stride=(1, 1),
-                                         padding=(1, 1))  # (21)
-        self.conv4_2_6 = torch.nn.ReLU(inplace=True)  # (22)
-        self.conv4_2_7 = torch.nn.MaxPool2d(kernel_size=2,
-                                            stride=2,
-                                            padding=0,
-                                            dilation=1,
-                                            ceil_mode=False)  # (23)
-
-        self.conv4_2 = torch.nn.Sequential(
-            self.conv4_2_1,
-            self.conv4_2_2,
-            self.conv4_2_3,
-            self.conv4_2_4,
-            self.conv4_2_5,
-            self.conv4_2_6,
-            self.conv4_2_7
-        )
-
-        # Conv5_1
-        self.conv5_1_1 = torch.nn.Conv2d(in_channels=512,
-                                         out_channels=512,
-                                         kernel_size=(3, 3),
-                                         stride=(1, 1),
-                                         padding=(1, 1))  # (24)
-        self.conv5_1_2 = torch.nn.ReLU(inplace=True)  # (25)
-        self.conv5_1_3 = torch.nn.Conv2d(in_channels=512,
-                                         out_channels=512,
-                                         kernel_size=(3, 3),
-                                         stride=(1, 1),
-                                         padding=(1, 1))  # (26)
-        self.conv5_1_4 = torch.nn.ReLU(inplace=True)  # (27)
-        self.conv5_1_5 = torch.nn.Conv2d(in_channels=512,
-                                         out_channels=512,
-                                         kernel_size=(3, 3),
-                                         stride=(1, 1),
-                                         padding=(1, 1))  # (28)
-        self.conv5_1_6 = torch.nn.ReLU(inplace=True)  # (29)
-        self.conv5_1_7 = torch.nn.MaxPool2d(kernel_size=2,
-                                            stride=2,
-                                            padding=0,
-                                            dilation=1,
-                                            ceil_mode=False)  # (30)
-
-        self.conv5_1 = torch.nn.Sequential(
-            self.conv5_1_1,
-            self.conv5_1_2,
-            self.conv5_1_3,
-            self.conv5_1_4,
-            self.conv5_1_5,
-            self.conv5_1_6,
-            self.conv5_1_7
-        )
-
-        # Conv5_2
-        self.conv5_2_1 = torch.nn.Conv2d(in_channels=512,
-                                         out_channels=512,
-                                         kernel_size=(3, 3),
-                                         stride=(1, 1),
-                                         padding=(1, 1))  # (24)
-        self.conv5_2_2 = torch.nn.ReLU(inplace=True)  # (25)
-        self.conv5_2_3 = torch.nn.Conv2d(in_channels=512,
-                                         out_channels=512,
-                                         kernel_size=(3, 3),
-                                         stride=(1, 1),
-                                         padding=(1, 1))  # (26)
-        self.conv5_2_4 = torch.nn.ReLU(inplace=True)  # (27)
-        self.conv5_2_5 = torch.nn.Conv2d(in_channels=512,
-                                         out_channels=512,
-                                         kernel_size=(3, 3),
-                                         stride=(1, 1),
-                                         padding=(1, 1))  # (28)
-        self.conv5_2_6 = torch.nn.ReLU(inplace=True)  # (29)
-        self.conv5_2_7 = torch.nn.MaxPool2d(kernel_size=2,
-                                            stride=2,
-                                            padding=0,
-                                            dilation=1,
-                                            ceil_mode=False)  # (30)
-
-        self.conv5_2 = torch.nn.Sequential(
-            self.conv5_2_1,
-            self.conv5_2_2,
-            self.conv5_2_3,
-            self.conv5_2_4,
-            self.conv5_2_5,
-            self.conv5_2_6,
-            self.conv5_2_7
-        )
-
-        # FC6_1
-        self.FC6_1_1 = torch.nn.Linear(in_features=25088,
-                                       out_features=4096,
-                                       bias=True)  # (0)
-        self.FC6_1_2 = torch.nn.ReLU(inplace=True)  # (1)
-        self.FC6_1_3 = torch.nn.Dropout(p=0.5)  # (2)
-        self.FC6_1_4 = torch.nn.Linear(in_features=4096,
-                                       out_features=4096,
-                                       bias=True)  # (3)
-        self.FC6_1_5 = torch.nn.ReLU(inplace=True)  # (4)
-        self.FC6_1_6 = torch.nn.Dropout(p=0.5)  # (5)
-
-        self.FC6_1 = torch.nn.Sequential(
-            self.FC6_1_1,
-            self.FC6_1_2,
-            self.FC6_1_3,
-            self.FC6_1_4,
-            self.FC6_1_5,
-            self.FC6_1_6
-        )
-
-        # FC6_2
-        self.FC6_2_1 = copy.deepcopy(self.FC6_1_1)
-        self.FC6_2_2 = copy.deepcopy(self.FC6_1_2)
-        self.FC6_2_3 = copy.deepcopy(self.FC6_1_3)
-        self.FC6_2_4 = copy.deepcopy(self.FC6_1_4)
-        self.FC6_2_5 = copy.deepcopy(self.FC6_1_5)
-        self.FC6_2_6 = copy.deepcopy(self.FC6_1_6)
-
-        self.FC6_2 = torch.nn.Sequential(
-            self.FC6_2_1,
-            self.FC6_2_2,
-            self.FC6_2_3,
-            self.FC6_2_4,
-            self.FC6_2_5,
-            self.FC6_2_6
-        )
-
-        # FC7_1
-        self.FC7_1 = torch.nn.Linear(in_features=4096,
-                                     out_features=1000,
-                                     bias=True)  # (6): 4096, 1000
-
-        # FC7_2
-        self.FC7_2 = torch.nn.Linear(in_features=4096,
-                                     out_features=1000,
-                                     bias=True)  # (6): 4096, 1000
-
-        # ------------------------------ extra layers: FC8 and FC9
-        self.FC_8 = torch.nn.Linear(in_features=2000,  # 2048
-                                    out_features=1024)  # 1024
-
-        # attribute classifiers: out_attribs to be decided
-        self.attrib_classifier = torch.nn.Linear(in_features=1000,
-                                                 out_features=out_attribs)
-
-        # Arc FC layer for branch_2 and branch_3
-        self.arc_fc_br2 = ArcFC(in_features=1000,
-                                out_features=out_ids,
-                                s=30.0,
-                                m=0.5,
-                                easy_margin=False)
-        self.arc_fc_br3 = ArcFC(in_features=1024,
-                                out_features=out_ids,
-                                s=30.0,
-                                m=0.5,
-                                easy_margin=False)
-
-        # construct branches
-        self.shared_layers = torch.nn.Sequential(
-            self.conv1,
-            self.conv2,
-            self.conv3
-        )
-
-        self.branch_1_feats = torch.nn.Sequential(
-            self.shared_layers,
-            self.conv4_1,
-            self.conv5_1,
-        )
-
-        self.branch_1_fc = torch.nn.Sequential(
-            self.FC6_1,
-            self.FC7_1
-        )
-
-        self.branch_1 = torch.nn.Sequential(
-            self.branch_1_feats,
-            self.branch_1_fc
-        )
-
-        self.branch_2_feats = torch.nn.Sequential(
-            self.shared_layers,
-            self.conv4_2,
-            self.conv5_2
-        )
-
-        self.branch_2_fc = torch.nn.Sequential(
-            self.FC6_2,
-            self.FC7_2
-        )
-
-        self.branch_2 = torch.nn.Sequential(
-            self.branch_2_feats,
-            self.branch_2_fc
-        )
-
-    def forward(self,
-                X,
-                branch,
-                label=None):
-        """
-        :param X:
-        :param branch:
-        :param label:
-        :return:
-        """
-        # batch size
-        N = X.size(0)
-
-        if branch == 1:  # train attributes classification
-            X = self.branch_1_feats(X)
-
-            # reshape and connect to FC layers
-            X = X.view(N, -1)
-            X = self.branch_1_fc(X)
-
-            assert X.size() == (N, 1000)
-
-            X = self.attrib_classifier(X)
-
-            assert X.size() == (N, self.out_attribs)
-
-            return X
-
-        elif branch == 2:  # get vehicle fine-grained feature
-            if label is None:
-                print('=> label is None.')
-                return None
-            X = self.branch_2_feats(X)
-
-            # reshape and connect to FC layers
-            X = X.view(N, -1)
-            X = self.branch_2_fc(X)
-
-            assert X.size() == (N, 1000)
-
-            X = self.arc_fc_br2.forward(input=X, label=label)
-
-            assert X.size() == (N, self.out_ids)
-
-            return X
-
-        elif branch == 3:  # overall: combine branch_1 and branch_2
-            if label is None:
-                print('=> label is None.')
-                return None
-            branch_1 = self.branch_1_feats(X)
-            branch_2 = self.branch_2_feats(X)
-
-            # reshape and connect to FC layers
-            branch_1 = branch_1.view(N, -1)
-            branch_2 = branch_2.view(N, -1)
-            branch_1 = self.branch_1_fc(branch_1)
-            branch_2 = self.branch_2_fc(branch_2)
-
-            assert branch_1.size() == (N, 1000) and branch_2.size() == (N, 1000)
-
-            # feature fusion
-            fusion_feats = torch.cat((branch_1, branch_2), dim=1)
-
-            assert fusion_feats.size() == (N, 2000)
-
-            # connect to FC8: output 1024 dim feature vector
-            X = self.FC_8(fusion_feats)
-
-            # connect to classifier: arc_fc_br3
-            X = self.arc_fc_br3.forward(input=X, label=label)
-
-            assert X.size() == (N, self.out_ids)
-
-            return X
-
-        elif branch == 4:  # test pre-trained weights
-            # extract features
-            X = self.branch_1_feats(X)
-
-            # flatten and connect to FC layers
-            X = X.view(N, -1)
-            X = self.branch_1_fc(X)
-
-            assert X.size() == (N, 1000)
-
-            return X
-
-        elif branch == 5:
-            # 前向运算提取用于Vehicle ID的特征向量
-            branch_1 = self.branch_1_feats(X)
-            branch_2 = self.branch_2_feats(X)
-
-            # reshape and connect to FC layers
-            branch_1 = branch_1.view(N, -1)
-            branch_2 = branch_2.view(N, -1)
-            branch_1 = self.branch_1_fc(branch_1)
-            branch_2 = self.branch_2_fc(branch_2)
-
-            assert branch_1.size() == (N, 1000) and branch_2.size() == (N, 1000)
-
-            # feature fusion
-            fusion_feats = torch.cat((branch_1, branch_2), dim=1)
-
-            assert fusion_feats.size() == (N, 2000)
-
-            # connect to FC8: output 1024 dim feature vector
-            X = self.FC_8(fusion_feats)
-
-            assert X.size() == (N, 1024)
-
-            return X
-
-        else:
-            print('=> invalid branch')
-            return None
 
 
 # --------------------------------------- methods
@@ -824,7 +113,6 @@ def count_attrib_correct(pred, label, idx):
 
 
 # @TODO: 可视化分类结果...
-
 def ivt_tensor_img(input,
                    title=None):
     """
@@ -1267,8 +555,7 @@ def test_accuracy(net, data_loader):
     return accuracy
 
 
-def test_mc_accuracy(net,
-                     data_loader):
+def test_mc_accuracy(net, data_loader):
     """
     :param net:
     :param data_loader:
@@ -1317,8 +604,7 @@ def test_mc_accuracy(net,
     return accuracy
 
 
-def train_mc(freeze_feature,
-             resume=None):
+def eval_mc(resume):
     """
     训练RepNet: RAModel and color multi-label classification
     :param freeze_feature:
@@ -1328,114 +614,27 @@ def train_mc(freeze_feature,
                  out_attribs=257).to(device)
     print('=> Mix difference network:\n', net)
 
-    # 是否从断点启动
-    if resume is not None:
-        if os.path.isfile(resume):
-            net.load_state_dict(torch.load(resume))  # 加载模型
-            print('=> net resume from {}'.format(resume))
-        else:
-            print('=> [Err]: invalid resume path @ %s' % resume)
+    if os.path.isfile(resume):
+        net.load_state_dict(torch.load(resume, map_location=torch.device('cpu')))  # 加载模型
+        print('=> net resume from {}'.format(resume))
+    else:
+        print('=> [Err]: invalid resume path @ %s' % resume)
 
     # 数据集
-    train_set = VehicleID_MC(root='/mnt/diskb/even/VehicleID_V1.0',
-                             transforms=None,
-                             mode='train')
-    test_set = VehicleID_MC(root='/mnt/diskb/even/VehicleID_V1.0',
+    test_set = VehicleID_MC(root='./dataset/VehicleID_V1.0',
                             transforms=None,
                             mode='test')
-    train_loader = torch.utils.data.DataLoader(dataset=train_set,
-                                               batch_size=32,
-                                               shuffle=True,
-                                               num_workers=4)
     test_loader = torch.utils.data.DataLoader(dataset=test_set,
                                               batch_size=32,
                                               shuffle=False,
                                               num_workers=2)
 
-    # 损失函数
-    loss_func = torch.nn.CrossEntropyLoss().to(device)
-
-    # 优化函数
-    if freeze_feature:  # 锁住特征提取层，仅打开FC层
-        optimizer = torch.optim.SGD(net.branch_1_fc.parameters(),
-                                    lr=1e-3,
-                                    momentum=9e-1,
-                                    weight_decay=1e-8)
-        for param in net.branch_1_feats.parameters():
-            param.requires_grad = False
-        print('=> optimize only FC layers.')
-    else:  # 打开所有参数
-        optimizer = torch.optim.SGD(net.branch_1.parameters(),
-                                    lr=1e-3,
-                                    momentum=9e-1,
-                                    weight_decay=1e-8)
-        print('=> optimize all layers.')
-
-    # 开始训练
-    print('\nTraining...')
-    net.train()  # train模式
-
-    best_acc = 0.0
-    best_epoch = 0
-
-    print('=> Epoch\tTrain loss\tTrain acc\tTest acc')
-    for epoch in range(50):
-        epoch_loss = []
-        num_correct = 0
-        num_total = 0
-
-        for data, label in train_loader:  # 遍历每一个batch
-            # ------------- 放入GPU
-            data, label = data.to(device), label.to(device).long()
-
-            # ------------- 清空梯度
-            optimizer.zero_grad()
-
-            # ------------- 前向计算
-            output = net.forward(X=data, branch=1)
-
-            # 计算loss
-            loss_m = loss_func(output[:, :250], label[:, 0])
-            loss_c = loss_func(output[:, 250:], label[:, 1])
-            loss = loss_m + loss_c
-
-            # ------------- 统计
-            epoch_loss.append(loss.item())
-
-            # 统计样本数量
-            num_total += label.size(0)
-
-            # 统计训练数据正确率
-            pred = get_predict_mc(output)
-            label = label.cpu().long()
-            num_correct += count_correct(pred=pred, label=label)
-
-            # ------------- 反向运算
-            loss.backward()
-            optimizer.step()
-
-        # 计算训练集准确度
-        train_acc = 100.0 * float(num_correct) / float(num_total)
-
-        # 计算测试集准确度
-        test_acc = test_mc_accuracy(net=net,
-                                    data_loader=test_loader)
-        if test_acc > best_acc:
-            best_acc = test_acc
-            best_epoch = epoch + 1
-
-            # 保存模型权重
-            model_save_name = 'epoch_' + str(epoch + 1) + '.pth'
-            torch.save(net.state_dict(),
-                       '/mnt/diskb/even/MDNet_ckpt_br1/' + model_save_name)
-            print('<= {} saved.'.format(model_save_name))
-
-        print('\t%d \t%4.3f \t\t%4.2f%% \t\t%4.2f%%' %
-              (epoch + 1, sum(epoch_loss) / len(epoch_loss), train_acc, test_acc))
-    print('=> Best accuracy at epoch %d, test accuaray %f' % (best_epoch, best_acc))
+    # 计算测试集准确度
+    test_acc = test_mc_accuracy(net=net,
+                                data_loader=test_loader)
 
 
-def train(resume):
+def eval(resume):
     """
     :param resume:
     :return:
@@ -1450,162 +649,35 @@ def train(resume):
 
     print('=> Mix difference network:\n', net)
 
-    # whether to resume from checkpoint
-    if resume is not None:
-        if os.path.isfile(resume):
-            net.load_state_dict(torch.load(resume))  # 加载模型
-            print('=> net resume from {}'.format(resume))
-        else:
-            print('=> [Err]: invalid resume path @ %s' % resume)
+    if os.path.isfile(resume):
+        net.load_state_dict(torch.load(resume, map_location=torch.device('cpu')))  # 加载模型
+        print('=> net resume from {}'.format(resume))
+    else:
+        print('=> [Err]: invalid resume path @ %s' % resume)
 
     # 数据集
-    train_set = VehicleID_All(root='/mnt/diskb/even/VehicleID_V1.0',
-                              transforms=None,
-                              mode='train')
-    test_set = VehicleID_All(root='/mnt/diskb/even/VehicleID_V1.0',
+    test_set = VehicleID_All(root='./dataset/VehicleID_V1.0',
                              transforms=None,
                              mode='test')
-    train_loader = torch.utils.data.DataLoader(dataset=train_set,
-                                               batch_size=16,
-                                               shuffle=True,
-                                               num_workers=4)
+
     test_loader = torch.utils.data.DataLoader(dataset=test_set,
                                               batch_size=16,
                                               shuffle=False,
                                               num_workers=4)
 
-    # loss function
-    loss_func_1 = torch.nn.CrossEntropyLoss().to(device)
-    loss_func_2 = FocalLoss(gamma=2).to(device)
+    # calculate test-set accuracy
+    test_acc = test_accuracy(net=net,
+                                data_loader=test_loader)
 
-    # optimization function
-    optimizer = torch.optim.SGD(net.parameters(),
-                                lr=1e-3,
-                                momentum=9e-1,
-                                weight_decay=1e-8)
-    print('=> optimize all layers.')
+    print('test_acc: \t\t%4.2f%%' % (test_acc))
 
-    # start to train
-    print('\nTraining...')
-    net.train()  # train模式
 
-    best_acc = 0.0
-    best_epoch = 0
-
-    print('=> Epoch\tTrain loss\tTrain acc\tTest acc')
-    for epoch_i in range(30):
-
-        epoch_loss = []
-        num_correct = 0
-        num_total = 0
-        for batch_i, (data, label) in enumerate(train_loader):  # 遍历每一个batch
-            # ------------- put data to device
-            data, label = data.to(device), label.to(device).long()
-
-            # ------------- clear gradients
-            optimizer.zero_grad()
-
-            # ------------- forward pass of 3 branches
-            output_1 = net.forward(X=data, branch=1, label=None)
-            output_2 = net.forward(X=data, branch=2, label=label[:, 2])
-            output_3 = net.forward(X=data, branch=3, label=label[:, 2])
-
-            # ------------- calculate loss
-            # branch1 loss
-            loss_m = loss_func_1(output_1[:, :250], label[:, 0])  # vehicle model
-            loss_c = loss_func_1(output_1[:, 250:], label[:, 1])  # vehicle color
-            loss_br1 = loss_m + loss_c
-
-            # branch2 loss
-            loss_br2 = loss_func_2(output_2, label[:, 2])
-
-            # branch3 loss: Vehicle ID classification
-            loss_br3 = loss_func_2(output_3, label[:, 2])
-
-            # 加权计算总loss
-            loss = 0.5 * loss_br1 + 0.5 * loss_br2 + 1.0 * loss_br3
-
-            # ------------- statistics
-            epoch_loss.append(loss.cpu().item())
-
-            # count samples
-            num_total += label.size(0)
-
-            # statistics of correct number
-            _, pred = torch.max(output_3.data, 1)
-            batch_correct = (pred == label[:, 2]).sum().item()
-            batch_acc = float(batch_correct) / float(label.size(0))
-            num_correct += batch_correct
-
-            # ------------- back propagation
-            loss.backward()
-            optimizer.step()
-
-            iter_count = epoch_i * len(train_loader) + batch_i
-
-            # output batch accuracy
-            if iter_count % 10 == 0:
-                print('=> epoch {} iter {:>4d}/{:>4d}'
-                      ', total_iter {:>6d} '
-                      '| loss {:>5.3f} | accuracy {:>.3%}'
-                      .format(epoch_i + 1,
-                              batch_i,
-                              len(train_loader),
-                              iter_count,
-                              loss.item(),
-                              batch_acc))
-
-        # total epoch accuracy
-        train_acc = float(num_correct) / float(num_total)
-        print('=> epoch {} | average loss: {:.3f} | average accuracy: {:>.3%}'
-              .format(epoch_i + 1,
-                      float(sum(epoch_loss)) / float(len(epoch_loss)),
-                      train_acc))
-
-        # calculate test-set accuracy
-        test_acc = test_accuracy(net=net,
-                                 data_loader=test_loader)
-        if test_acc > best_acc:
-            best_acc = test_acc
-            best_epoch = epoch_i + 1
-
-            # save model weights
-            model_save_name = 'epoch_' + str(epoch_i + 1) + '.pth'
-            torch.save(net.state_dict(),
-                       '/mnt/diskb/even/MDNet_ckpt_all/' + model_save_name)
-            print('<= {} saved.'.format(model_save_name))
-
-        print('\t%d \t%4.3f \t\t%4.2f%% \t\t%4.2f%%' %
-              (epoch_i + 1,
-               sum(epoch_loss) / len(epoch_loss),
-               train_acc * 100.0,
-               test_acc))
-    print('=> Best accuracy at epoch %d, test accuaray %f' % (best_epoch, best_acc))
+def main():
+    resume = './models/pretrain_epoch_14.pth'
+    # eval_mc(resume=resume)
+    eval(resume=resume)
+    print('=> Done.')
 
 
 if __name__ == '__main__':
-    # test_init_weight()
-
-    # train_mc(freeze_feature=False,
-    #          resume='/mnt/diskb/even/MDNet_ckpt_br1/epoch_16.pth')
-
-    # train(resume='/mnt/diskb/even/MDNet_ckpt_br1/epoch_16.pth')
-    train(resume=None)  # 从头开始训练
-
-    # train(resume='/mnt/diskb/even/MDNet_ckpt_all/epoch_24_bk.pth')
-
-    # -----------------------------------
-    # viz_results(resume='/mnt/diskb/even/MDNet_ckpt_all/epoch_12.pth',
-    #             data_root='/mnt/diskb/even/VehicleID_V1.0')
-
-    # test_car_match_data(resume='/mnt/diskb/even/MDNet_ckpt_all/epoch_10.pth',
-    #                     pair_set_txt='/mnt/diskc/even/Car_DR/ArcFace_pytorch/data/pair_set_car.txt',
-    #                     img_root='/mnt/diskc/even/CarReIDCrop',  # CarReID_data
-    #                     batch_size=16)
-
-    # get_th_acc_VID(resume='/mnt/diskb/even/MDNet_ckpt_all/epoch_10.pth',
-    #                pair_set_txt='/mnt/diskb/even/VehicleID_V1.0/attribute/pair_set_vehicle.txt',
-    #                img_dir='/mnt/diskb/even/VehicleID_V1.0/image',
-    #                batch_size=16)
-
-    print('=> Done.')
+    main()
