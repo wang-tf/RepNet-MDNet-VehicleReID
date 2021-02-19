@@ -19,6 +19,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 
 # from data import VehicleID_MC, VehicleID_All, id2name
+import glob
 from tqdm import tqdm
 # import matplotlib as mpl
 from pylab import mpl
@@ -29,7 +30,7 @@ from InitRepNet import InitRepNet
 
 # 解决负号'-'显示为方块的问题
 mpl.rcParams['axes.unicode_minus'] = False
-mpl.rcParams['font.sans-serif'] = ['SimHei']
+mpl.rcParams[u'font.sans-serif'] = ['simhei']
 
 
 from network import RepNet
@@ -217,6 +218,8 @@ def viz_results(resume,
         output_id = net.forward(X=data,
                                 branch=3,
                                 label=label[:, 2])
+        print('output_id', output_id.cpu())
+        print('output_id shape', output_id.size())
         _, pred_tid = torch.max(output_id, 1)
         pred_tid = pred_tid.cpu()[0].item()
         pred_vid = trainID2Vid[pred_tid]
@@ -389,6 +392,12 @@ def gen_feature_map(resume,
 def cosin_metric(x1, x2):
     cosin = np.dot(x1, x2) / (np.linalg.norm(x1) * np.linalg.norm(x2))
     return cosin
+
+
+def euclidean_metric(x1, x2):
+    euclidean_dis = np.linalg.norm(x1 - x2)
+    euclidean_sim = 1.0 / (1.0 + euclidean_dis)
+    return euclidean_sim
 
 
 def cal_accuracy(y_score, y_true):
@@ -675,15 +684,39 @@ def eval(resume):
     print('test_acc: \t\t%4.2f%%' % (test_acc))
 
 
+def featrue_map_test(resume, image_root, metric_func=cosin_metric):
+    imgs_path = sorted(glob.glob(os.path.join(image_root, '*.jpg')))
+
+    feature_map = gen_feature_map(resume, imgs_path, batch_size=1)
+
+    images_num = len(imgs_path)
+    all_result_str = []
+    for i in range(images_num):
+        print('image_path: ', imgs_path[i])
+        sims_list = []
+        for j in range(images_num):
+            f1 = feature_map[imgs_path[i]]
+            f2 = feature_map[imgs_path[j]]
+            sim = metric_func(f1, f2)
+            sims_list.append(sim)
+        sims_list = list(map(str, sims_list))
+        one_line = ', '.join([os.path.basename(imgs_path[i])] + sims_list)
+        all_result_str.append(one_line)
+    with open('cosine_sim_matrix.csv', 'w') as f:
+        f.write('\n'.join(all_result_str))
+
+
+
 def main():
     resume = './models/pretrain_epoch_14.pth'
     pair_set_txt = './test_pair_set.txt'
-    img_root = './dataset/VehicleID_V1.0/image'
+    img_root = './dataset/Glodon_Veh_V1.0/image'
     # data_root = './dataset/VehicleID_V1.0'
     data_root = './dataset/Glodon_Veh_V1.0'
     # test_car_match_data(resume, pair_set_txt, img_root, batch_size=1)
     # get_th_acc_VID(resume, pair_set_txt, img_root, batch_size=1)
-    viz_results(resume, data_root)
+    # viz_results(resume, data_root)
+    featrue_map_test(resume, img_root, metric_func=euclidean_metric)
     print('=> Done.')
 
 
