@@ -103,8 +103,7 @@ def split2MC(root, TH=0.1):
       and os.path.isfile(color_attr_txt)
 
   # 读取veh2model和veh2color
-  vid2mid, vid2cid, img2vid = defaultdict(int), defaultdict(int), defaultdict(
-      int)
+  vid2mid, vid2cid, _ = defaultdict(int), defaultdict(int), defaultdict(int)
   with open(model_attr_txt, 'r', encoding='utf-8') as fh_1, \
           open(color_attr_txt, 'r', encoding='utf-8') as fh_2:
     for line in fh_1.readlines():  # vid to model id
