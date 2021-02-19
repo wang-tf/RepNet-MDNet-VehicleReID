@@ -6,7 +6,7 @@ os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
 import torch
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-device = torch.device('cuda: 0' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -771,18 +771,20 @@ def train_mc(freeze_feature,
     print('=> Best accuracy at epoch %d, test accuaray %f' % (best_epoch, best_acc))
 
 
-def train(resume):
+def train(resume, out_ids=105, model_attribs=25, color_attribs=7, data_root='', model_save_dir=''):
     """
     :param resume:
     :return:
     """
+    out_attribs = model_attribs + color_attribs
+
     # net = RepNet(out_ids=10086,
     #              out_attribs=257).to(device)
 
     vgg16_pretrain = torchvision.models.vgg16(pretrained=True)
     net = InitRepNet(vgg_orig=vgg16_pretrain,
-                     out_ids=10086,
-                     out_attribs=257).to(device)
+                     out_ids=out_ids,
+                     out_attribs=out_attribs).to(device)
 
     print('=> Mix difference network:\n', net)
 
@@ -795,10 +797,10 @@ def train(resume):
             print('=> [Err]: invalid resume path @ %s' % resume)
 
     # 数据集
-    train_set = VehicleID_All(root='/mnt/diskb/even/VehicleID_V1.0',
+    train_set = VehicleID_All(root=data_root,
                               transforms=None,
                               mode='train')
-    test_set = VehicleID_All(root='/mnt/diskb/even/VehicleID_V1.0',
+    test_set = VehicleID_All(root=data_root,
                              transforms=None,
                              mode='test')
     train_loader = torch.utils.data.DataLoader(dataset=train_set,
@@ -848,8 +850,8 @@ def train(resume):
 
             # ------------- calculate loss
             # branch1 loss
-            loss_m = loss_func_1(output_1[:, :250], label[:, 0])  # vehicle model
-            loss_c = loss_func_1(output_1[:, 250:], label[:, 1])  # vehicle color
+            loss_m = loss_func_1(output_1[:, :model_attribs], label[:, 0])  # vehicle model
+            loss_c = loss_func_1(output_1[:, model_attribs:], label[:, 1])  # vehicle color
             loss_br1 = loss_m + loss_c
 
             # branch2 loss
@@ -908,7 +910,7 @@ def train(resume):
             # save model weights
             model_save_name = 'epoch_' + str(epoch_i + 1) + '.pth'
             torch.save(net.state_dict(),
-                       '/mnt/diskb/even/MDNet_ckpt_all/' + model_save_name)
+                       model_save_dir + model_save_name)
             print('<= {} saved.'.format(model_save_name))
 
         print('\t%d \t%4.3f \t\t%4.2f%% \t\t%4.2f%%' %
@@ -921,8 +923,9 @@ def train(resume):
 
 def main():
     # test_init_weight()
-
-    train(resume=None)  # 从头开始训练
+    data_root = './dataset/Glodon_Veh_V1.0'
+    model_save_dir = './checkpoints'
+    train(resume=None, data_root=data_root, model_save_dir=model_save_dir)  # 从头开始训练
 
     # -----------------------------------
     # viz_results(resume='/mnt/diskb/even/MDNet_ckpt_all/epoch_12.pth',
