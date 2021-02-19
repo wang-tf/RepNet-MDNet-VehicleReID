@@ -1,5 +1,7 @@
 /models
 *.pth
 /.vscode
-/dataset
 /__pycache__/
+
+/dataset/*
+!/dataset/VehicleID_V1.0/
