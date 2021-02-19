@@ -5,141 +5,153 @@ import pickle
 import shutil
 import random
 from collections import defaultdict
+from pathlib import Path
+from math import ceil
 
 
-def process2model_color(root):
-  """
-    处理所有标注有model和color数据
-    返回ID2imgs
+def process2model_color(root: Path):
+  """处理所有标注有model和color数据
+
+  从model_attr.txt, color_attr.txt中提取不重复的vid映射为trainid，
+  将映射关系存到vid2TrainID.pkl, trainID2Vid.pkl，将原始的ids列表
+  存储到MC_IDs.pkl。
+  如果存在img2vid.txt，将id和图片列表的映射存到ID2imgs.pkl。
+
+  Arguments:
+    root: a Path of VehicleID dataset dir.
   """
 
   # 求model_attr.txt和color_attr.txt中ID交集
-  model_attr_txt = root + '/attribute/model_attr.txt'
-  color_attr_txt = root + '/attribute/color_attr.txt'
-  img2vid_txt = root + '/attribute/img2vid.txt'
+  model_attr_txt = root / 'attribute/model_attr.txt'
+  color_attr_txt = root / 'attribute/color_attr.txt'
+  img2vid_txt = root / 'attribute/img2vid.txt'
 
-  assert os.path.isfile(model_attr_txt) and \
-      os.path.isfile(color_attr_txt)
+  assert model_attr_txt.is_file() and \
+      color_attr_txt.is_file()
 
-  model_ids, color_ids = set(), set()
-  with open(model_attr_txt, 'r', encoding='utf-8') as f_h_model, \
-          open(color_attr_txt, 'r', encoding='utf-8') as f_h_color:
+  model_ids = set()
+  with model_attr_txt.open('r', encoding='utf-8') as f_h_model:
     for line in f_h_model.readlines():
       model_ids.add(int(line.strip().split()[0]))
+
+  color_ids = set()
+  with color_attr_txt.open('r', encoding='utf-8') as f_h_color:
     for line in f_h_color.readlines():
       color_ids.add(int(line.strip().split()[0]))
 
   # get intersection
-  MC_IDs = list(model_ids & color_ids)
-  MC_IDs.sort()
-  # print(MC_IDs)
-  print('=> toal %d vehicle IDs with model and color labeled.' % len(MC_IDs))
+  model_color_ids = list(model_ids & color_ids)
+  model_color_ids.sort()
+  # print(model_color_ids)
+  print('=> toal %d vehicle IDs with model and color labeled.' %
+        len(model_color_ids))
 
-  # class ID mapping: vid2TrainID <=> trainID2Vid
-  vid2TrainID, trainID2Vid = defaultdict(int), defaultdict(int)
-  for k, vid in enumerate(MC_IDs):
-    vid2TrainID[vid] = k
-    trainID2Vid[k] = vid
+  # class ID mapping: vid_2_trainid <=> trainid_2_vid
+  vid_2_trainid, trainid_2_vid = defaultdict(int), defaultdict(int)
+  for train_id, vid in enumerate(model_color_ids):
+    vid_2_trainid[vid] = train_id
+    trainid_2_vid[train_id] = vid
+
+  # 序列化用于model,color的Vehicle mapping，序列化model_color_ids
+  vid_2_trainid_path = root / 'attribute/vid2TrainID.pkl'
+  trainid_2_vid_path = root / 'attribute/trainID2Vid.pkl'
+  model_color_ids_path = root / 'attribute/MC_IDs.pkl'
+  with vid_2_trainid_path.open('wb') as f_h_1:
+    pickle.dump(vid_2_trainid, f_h_1)
+    print('=> %s dumped.' % vid_2_trainid_path)
+  with trainid_2_vid_path.open('wb') as f_h_2:
+    pickle.dump(trainid_2_vid, f_h_2)
+    print('=> %s dumped.' % trainid_2_vid_path)
+  with model_color_ids_path.open('wb') as f_h_2:
+    pickle.dump(model_color_ids, f_h_2)
+    print('=> %s dumped.' % model_color_ids_path)
 
   # statistics of ID2img_list
-  if os.path.isfile(img2vid_txt):
-    All_IDs = set()
-    ID2imgs = defaultdict(list)
+  if img2vid_txt.is_file():
+    all_vid = set()
+    vid_2_imgs = defaultdict(list)  # vid到图像名列表的映射
 
-    with open(img2vid_txt, 'r', encoding='utf-8') as f_h:
+    with img2vid_txt.open('r', encoding='utf-8') as f_h:
       sample_cnt = 0
       for line in f_h.readlines():
-        line = line.strip().split()
+        img, vid = line.strip().split()
 
-        img, _id = line
-
-        All_IDs.add(_id)
-        ID2imgs[int(_id)].append(img)
+        all_vid.add(vid)
+        vid_2_imgs[int(vid)].append(img)
         sample_cnt += 1
 
-  # print(ID2Num)
-  print('=> total %d vehicles have total %d IDs' % (sample_cnt, len(All_IDs)))
+    print('=> total %d vehicles have total %d IDs' %
+          (sample_cnt, len(all_vid)))
 
-  # 序列化MC_IDs和ID2imgs到attribute子目录
-  MC_IDS_path = root + '/attribute/MC_IDs.pkl'
-  ID2imgs_path = root + '/attribute/ID2imgs.pkl'
-  # ID2imgs = sorted(ID2imgs.items(),
-  #                  key=lambda x: int(x[0]),
-  #                  reverse=False)
-  print(len(ID2imgs))
-  with open(ID2imgs_path, 'wb') as f_h_1, \
-          open(MC_IDS_path, 'wb') as f_h_2:
-    pickle.dump(ID2imgs, f_h_1)
-    pickle.dump(MC_IDs, f_h_2)
-    print('=> %s dumped.' % ID2imgs_path)
-    print('=> %s dumped.' % MC_IDS_path)
-
-  # 序列化用于model,color的Vehicle mapping
-  vid2TrainID_path = root + '/attribute/vid2TrainID.pkl'
-  trainID2Vid_path = root + '/attribute/trainID2Vid.pkl'
-  with open(vid2TrainID_path, 'wb') as f_h_1, \
-          open(trainID2Vid_path, 'wb') as f_h_2:
-    pickle.dump(vid2TrainID, f_h_1)
-    pickle.dump(trainID2Vid, f_h_2)
-    print('=> %s dumped.' % vid2TrainID_path)
-    print('=> %s dumped.' % trainID2Vid_path)
+    # 序列化vid_2_imgs到attribute子目录
+    vid_2_imgs_path = root / 'attribute/ID2imgs.pkl'
+    # ID2imgs = sorted(ID2imgs.items(),
+    #                  key=lambda x: int(x[0]),
+    #                  reverse=False)
+    print(len(vid_2_imgs))
+    with vid_2_imgs_path.open('wb') as f_h_1:
+      pickle.dump(vid_2_imgs, f_h_1)
+      print('=> %s dumped.' % vid_2_imgs_path)
 
 
 # model, color: multi-label classification
-def split2MC(root, TH=0.1):
+def split_train_and_test(root, TH=0.1):
   """
-    根据ID2imgs和MC_IDS划分到新目录
-    @TODO: 还需要对生成的数据集进行可视化验证
-    """
+  根据ID2imgs和MC_IDS划分到新目录
+  @TODO: 还需要对生成的数据集进行可视化验证
+  """
 
-  mc_ids_f_path = root + '/attribute/MC_IDs.pkl'
-  id2imgs_f_path = root + '/attribute/ID2imgs.pkl'
-  model_attr_txt = root + '/attribute/model_attr.txt'
-  color_attr_txt = root + '/attribute/color_attr.txt'
+  model_color_ids_path = root / 'attribute/MC_IDs.pkl'
+  id2imgs_f_path = root / 'attribute/ID2imgs.pkl'
+  model_attr_txt = root / 'attribute/model_attr.txt'
+  color_attr_txt = root / 'attribute/color_attr.txt'
 
-  assert os.path.isfile(mc_ids_f_path) \
-      and os.path.isfile(id2imgs_f_path) \
-      and os.path.isfile(model_attr_txt) \
-      and os.path.isfile(color_attr_txt)
+  assert model_color_ids_path.is_file() \
+      and id2imgs_f_path.is_file() \
+      and model_attr_txt.is_file() \
+      and color_attr_txt.is_file()
 
   # 读取veh2model和veh2color
   vid2mid, vid2cid, _ = defaultdict(int), defaultdict(int), defaultdict(int)
-  with open(model_attr_txt, 'r', encoding='utf-8') as fh_1, \
-          open(color_attr_txt, 'r', encoding='utf-8') as fh_2:
+  with model_attr_txt.open('r', encoding='utf-8') as fh_1:
     for line in fh_1.readlines():  # vid to model id
       line = line.strip().split()
-      vid2mid[int(line[0])] = int(line[1])
+      vid, modelid = line[:2]
+      vid2mid[int(vid)] = int(modelid)
+  with color_attr_txt.open('r', encoding='utf-8') as fh_2:
     for line in fh_2.readlines():  # vid to color id
       line = line.strip().split()
-      vid2cid[int(line[0])] = int(line[1])
+      vid, colorid = line[:2]
+      vid2cid[int(vid)] = int(colorid)
 
-  with open(mc_ids_f_path, 'rb') as f_h_1, \
+  with open(model_color_ids_path, 'rb') as f_h_1, \
           open(id2imgs_f_path, 'rb') as f_h_2:
-    mc_ids = pickle.load(f_h_1)
+    model_color_ids = pickle.load(f_h_1)
     id2imgs = pickle.load(f_h_2)
 
-    train_txt = root + '/attribute/train_all.txt'
-    test_txt = root + '/attribute/test_all.txt'
+    train_txt = root / 'attribute/train_all.txt'
+    test_txt = root / 'attribute/test_all.txt'
 
     # 按照Vehicle ID的顺序生成训练和测试数据
     train_cnt, test_cnt = 0, 0
-    with open(train_txt, 'w', encoding='utf-8') as f_h_3, \
-            open(test_txt, 'w', encoding='utf-8') as f_h_4:
-      for _, vid in enumerate(mc_ids):
-        if vid in mc_ids:
+    with train_txt.open('w', encoding='utf-8') as train_txt_f_h, \
+            test_txt.open('w', encoding='utf-8') as test_txt_f_h:
+      for _, vid in enumerate(model_color_ids):
+        if vid in model_color_ids:
           imgs_list = id2imgs[vid]
-          for img in imgs_list:
+          random.shuffle(imgs_list)
+          for i, img in enumerate(imgs_list):
             # get image and label: img + model_id + color_id
             model_id, color_id = vid2mid[vid], vid2cid[vid]
             img_label = img + ' ' + str(model_id) \
                 + ' ' + str(color_id) + ' ' + str(vid) + '\n'
 
             # split to train.txt and test.txt
-            if random.random() > TH:
-              f_h_3.write(img_label)
+            if i < int(ceil((1 - TH) * len(imgs_list))):
+              train_txt_f_h.write(img_label)
               train_cnt += 1
             else:
-              f_h_4.write(img_label)
+              test_txt_f_h.write(img_label)
               test_cnt += 1
           # print('=> Vehicle ID %d samples generated.' % vid)
 
@@ -317,9 +329,9 @@ def gen_test_pairs(root):
 if __name__ == '__main__':
   # process_vehicleID(root='e:/VehicleID_V1.0')
   # split(data_root='f:/VehicleID_Part')
-
-  process2model_color(root='./dataset/Glodon_Veh_V1.0')
-  split2MC(root='./dataset/Glodon_Veh_V1.0', TH=0.05)
+  root_dir = Path('./dataset/Glodon_Veh_V1.0')
+  process2model_color(root_dir)
+  split_train_and_test(root_dir, TH=0.2)
 
   # form_cls_name(root='e:/VehicleID_V1.0')
 

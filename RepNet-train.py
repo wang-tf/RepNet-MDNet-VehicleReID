@@ -35,15 +35,15 @@ mpl.rcParams['font.sans-serif'] = ['SimHei']
 # -----------------------------------FC layers
 class ArcFC(nn.Module):
   r"""
-    Implement of large margin arc distance: :
-        Args:
-            in_features: size of each input sample
-            out_features: size of each output_layer sample
-            s: norm of input feature
-            m: margin
+  Implement of large margin arc distance: :
+  Args:
+      in_features: size of each input sample
+      out_features: size of each output_layer sample
+      s: norm of input feature
+      m: margin
 
-            cos(theta + m)
-        """
+      cos(theta + m)
+  """
   def __init__(self,
                in_features,
                out_features,
@@ -76,10 +76,10 @@ class ArcFC(nn.Module):
     self.th = math.cos(math.pi - m)
     self.mm = math.sin(math.pi - m) * m
 
-  def forward(self, input, label):
+  def forward(self, data, label):
     # --------------------------- cos(theta) & phi(theta) ---------------------------
     # L2 normalize and calculate cosine
-    cosine = F.linear(F.normalize(input, p=2), F.normalize(self.weight, p=2))
+    cosine = F.linear(F.normalize(data, p=2), F.normalize(self.weight, p=2))
 
     sine = torch.sqrt(1.0 - torch.pow(cosine, 2))
 
@@ -158,11 +158,11 @@ def count_attrib_correct(pred, label, idx):
 # @TODO: 可视化分类结果...
 
 
-def ivt_tensor_img(input, title=None):
+def ivt_tensor_img(data, title=None):
   """
     Imshow for Tensor.
     """
-  input = input.numpy().transpose((1, 2, 0))
+  data = data.numpy().transpose((1, 2, 0))
 
   # 转变数组格式 RGB图像格式：rows * cols * channels
   # 灰度图则不需要转换，只有(rows, cols)而不是（rows, cols, 1）
@@ -171,10 +171,10 @@ def ivt_tensor_img(input, title=None):
   std = np.array([0.229, 0.224, 0.225])
 
   # 去标准化，对应transforms
-  input = std * input + mean
+  data = std * data + mean
 
   # 修正 clip 限制inp的值，小于0则=0，大于1则=1
-  output = np.clip(input, 0, 1)
+  output = np.clip(data, 0, 1)
 
   # plt.imshow(input)
   # if title is not None:
@@ -751,9 +751,9 @@ def train(resume,
           data_root='',
           model_save_dir=''):
   """
-    :param resume:
-    :return:
-    """
+  :param resume:
+  :return:
+  """
   out_attribs = model_attribs + color_attribs
 
   # net = RepNet(out_ids=10086,
