@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 # from data import VehicleID_MC, VehicleID_All, id2name
 from tqdm import tqdm
 import matplotlib as mpl
-from matplotlib.font_manager import *
+# from matplotlib.font_manager import *
 from collections import defaultdict
 
 from InitRepNet import InitRepNet
@@ -895,7 +895,10 @@ def main():
   # test_init_weight()
   data_root = './dataset/Glodon_Veh_V1.0'
   model_save_dir = './checkpoints'
-  train(resume=None, data_root=data_root,
+  epoch = 100
+  train(resume=None,
+        epoch=epoch,
+        data_root=data_root,
         model_save_dir=model_save_dir)  # 从头开始训练
 
   # -----------------------------------

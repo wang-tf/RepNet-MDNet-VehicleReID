@@ -1,19 +1,17 @@
 # coding=utf-8
-
-# ---------- Mixed Difference Network Structure base on pre-trained vgg16 on ImageNet dataset.
-
+"""
+Mixed Difference Network Structure base on
+pre-trained vgg16 on ImageNet dataset.
+"""
 import os
-
-os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
 import torch
-
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-
 from torch.nn import Parameter
 import math
 import torch.nn.functional as F
 import copy
+os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
 class ArcFC(torch.nn.Module):
@@ -59,10 +57,10 @@ class ArcFC(torch.nn.Module):
     self.th = math.cos(math.pi - m)
     self.mm = math.sin(math.pi - m) * m
 
-  def forward(self, input, label):
+  def forward(self, data, label):
     # --------------------------- cos(theta) & phi(theta) ---------------------------
     # L2 normalize and calculate cosine
-    cosine = F.linear(F.normalize(input, p=2), F.normalize(self.weight, p=2))
+    cosine = F.linear(F.normalize(data, p=2), F.normalize(self.weight, p=2))
 
     sine = torch.sqrt(1.0 - torch.pow(cosine, 2))
 
@@ -90,13 +88,14 @@ class ArcFC(torch.nn.Module):
 
 
 class InitRepNet(torch.nn.Module):
+  """
+  网络结构定义与初始化
+  :param vgg_orig: pre-trained VggNet
+  :param out_ids:
+  :param out_attribs:
+  """
   def __init__(self, vgg_orig, out_ids, out_attribs):
-    """
-        网络结构定义与初始化
-        :param vgg_orig: pre-trained VggNet
-        :param out_ids:
-        :param out_attribs:
-        """
+
     super(InitRepNet, self).__init__()
 
     self.out_ids, self.out_attribs = out_ids, out_attribs
@@ -306,7 +305,7 @@ class InitRepNet(torch.nn.Module):
 
       assert X.size() == (N, 1000)
 
-      X = self.arc_fc_br2.forward(input=X, label=label)
+      X = self.arc_fc_br2.forward(data=X, label=label)
 
       assert X.size() == (N, self.out_ids)
 
@@ -335,7 +334,7 @@ class InitRepNet(torch.nn.Module):
       X = self.FC_8(fusion_feats)
 
       # connect to classifier: arc_fc_br3
-      X = self.arc_fc_br3.forward(input=X, label=label)
+      X = self.arc_fc_br3.forward(data=X, label=label)
 
       assert X.size() == (N, self.out_ids)
 
