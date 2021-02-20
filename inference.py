@@ -233,10 +233,10 @@ def viz_results(resume,
 
     # 绘图
     img = ivt_tensor_img(data.cpu()[0])
-    plt.figure(figsize=(6, 6))
+    plt.figure(figsize=(12, 6))
+    plt.title(title)
     ax1 = plt.subplot(121)
     ax1.imshow(img)
-    plt.title(title)
 
     pred_vid_image_path = os.path.join(data_root, 'image',
                                        vid_2_images[pred_vid][0] + '.jpg')
