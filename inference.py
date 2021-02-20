@@ -234,7 +234,8 @@ def viz_results(resume,
     # 绘图
     img = ivt_tensor_img(data.cpu()[0])
     plt.figure(figsize=(12, 6))
-    plt.title(title)
+    plt.suptitle(title)
+    # plt.title(title)
     ax1 = plt.subplot(121)
     ax1.imshow(img)
 
