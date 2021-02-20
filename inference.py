@@ -717,6 +717,7 @@ def main():
   # data_root = './dataset/VehicleID_V1.0'
   resume = './checkpoints/epoch_31.pth'
   data_root = './dataset/Glodon_Veh_V1.0'
+  save_dir = './checkpoints/outputs'
   img_root = os.path.join(data_root, 'image')
   out_ids = 105
   model_attribs = 25
@@ -729,7 +730,8 @@ def main():
               data_root,
               out_ids=out_ids,
               model_attr=model_attribs,
-              color_attr=color_attribs)
+              color_attr=color_attribs,
+              save_dir=save_dir)
 
   # featrue_map_test(resume,
   #                  img_root,
