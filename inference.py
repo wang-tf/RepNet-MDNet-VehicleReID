@@ -17,7 +17,7 @@ import pickle
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
-
+from skimage import io
 # from data import VehicleID_MC, VehicleID_All, id2name
 import glob
 from tqdm import tqdm
@@ -50,13 +50,13 @@ class FocalLoss(nn.Module):
     self.eps = eps
     self.ce = torch.nn.CrossEntropyLoss()
 
-  def forward(self, input, target):
+  def forward(self, data, target):
     """
-        :param input:
+        :param data:
         :param target:
         :return:
         """
-    log_p = self.ce(input, target)
+    log_p = self.ce(data, target)
     p = torch.exp(-log_p)
     loss = (1.0 - p)**self.gamma * log_p
     return loss.mean()
@@ -112,11 +112,11 @@ def count_attrib_correct(pred, label, idx):
 
 
 # @TODO: 可视化分类结果...
-def ivt_tensor_img(input, title=None):
+def ivt_tensor_img(data, title=None):
   """
-    Imshow for Tensor.
-    """
-  input = input.numpy().transpose((1, 2, 0))
+  Imshow for Tensor.
+  """
+  data = data.numpy().transpose((1, 2, 0))
 
   # 转变数组格式 RGB图像格式：rows * cols * channels
   # 灰度图则不需要转换，只有(rows, cols)而不是（rows, cols, 1）
@@ -125,12 +125,12 @@ def ivt_tensor_img(input, title=None):
   std = np.array([0.229, 0.224, 0.225])
 
   # 去标准化，对应transforms
-  input = std * input + mean
+  data = std * data + mean
 
   # 修正 clip 限制inp的值，小于0则=0，大于1则=1
-  output = np.clip(input, 0, 1)
+  output = np.clip(data, 0, 1)
 
-  # plt.imshow(input)
+  # plt.imshow(data)
   # if title is not None:
   #     plt.title(title)
   # plt.pause(0.001)  # pause a bit so that plots are updated
@@ -144,19 +144,10 @@ def viz_results(resume,
                 model_attr=250,
                 color_attr=27):
   """
-    :param resume:
-    :param data_root:
-    :return:
-    """
-  color_dict = {
-      'black': u'黑色',
-      'blue': u'蓝色',
-      'gray': u'灰色',
-      'red': u'红色',
-      'sliver': u'银色',
-      'white': u'白色',
-      'yellow': u'黄色'
-  }
+  :param resume:
+  :param data_root:
+  :return:
+  """
   out_attribs = model_attr + color_attr
   test_set = VehicleID_All(root=data_root, transforms=None, mode='test')
   test_loader = torch.utils.data.DataLoader(dataset=test_set,
@@ -196,6 +187,11 @@ def viz_results(resume,
     colorID2name = pickle.load(fh_2)
     trainID2Vid = pickle.load(fh_3)
 
+  # load pred_vid image
+  vid_2_images_path = data_root + '/attribute/ID2imgs.pkl'
+  with open(vid_2_images_path, 'rb') as vid_2_images_f_h:
+    vid_2_images = pickle.load(vid_2_images_f_h)
+
   # 测试
   print('=> testing...')
   for i, (data, label) in enumerate(test_loader):
@@ -230,15 +226,23 @@ def viz_results(resume,
     # 图像标题
     title = 'pred: ' + pred_m_name + ' ' + pred_c_name \
             + ', vehicle ID ' + str(pred_vid) \
-            + '\n' + 'resu: ' + res_m_name + ' ' + res_c_name \
+            + '\n' + \
+            'resu: ' + res_m_name + ' ' + res_c_name \
             + ', vehicle ID ' + str(res_vid)
     print('=> result: ', title)
 
     # 绘图
     img = ivt_tensor_img(data.cpu()[0])
-    fig = plt.figure(figsize=(6, 6))
-    plt.imshow(img)
-    plt.title(title)
+    plt.figure(figsize=(6, 6))
+    ax1 = plt.subplot(121)
+    ax1.imshow(img)
+    ax1.title(title)
+
+    pred_vid_image_path = os.path.join(data_root, 'image',
+                                       vid_2_images[pred_vid][0] + '.jpg')
+    pred_vid_image = io.imread(pred_vid_image_path)
+    ax2 = plt.subplot(122)
+    ax2.imshow(pred_vid_image)
     plt.show()
 
 
@@ -713,6 +717,7 @@ def main():
   # test_car_match_data(resume, pair_set_txt, img_root, batch_size=1)
   # get_th_acc_VID(resume, pair_set_txt, img_root, batch_size=1)
 
+  # 结果可视化
   viz_results(resume,
               data_root,
               out_ids=out_ids,
