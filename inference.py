@@ -138,7 +138,7 @@ def ivt_tensor_img(input, title=None):
   return output
 
 
-def viz_results(resume, data_root):
+def viz_results(resume, data_root, out_ids=10086, out_attribs=257):
   """
     :param resume:
     :param data_root:
@@ -160,7 +160,7 @@ def viz_results(resume, data_root):
                                             shuffle=False,
                                             num_workers=1)
 
-  net = RepNet(out_ids=10086, out_attribs=257).to(device)
+  net = RepNet(out_ids=out_ids, out_attribs=out_attribs).to(device)
   print('=> Mix difference network:\n', net)
 
   # 从断点启动
@@ -224,9 +224,9 @@ def viz_results(resume, data_root):
     res_c_name = colorID2name[res_c_id]
 
     # 图像标题
-    title = 'pred: ' + pred_m_name + ' ' + color_dict[pred_c_name] \
+    title = 'pred: ' + pred_m_name + ' ' + pred_c_name \
             + ', vehicle ID ' + str(pred_vid) \
-            + '\n' + 'resu: ' + res_m_name + ' ' + color_dict[res_c_name] \
+            + '\n' + 'resu: ' + res_m_name + ' ' + res_c_name \
             + ', vehicle ID ' + str(res_vid)
     print('=> result: ', title)
 
@@ -709,12 +709,14 @@ def main():
   out_attribs = model_attribs + color_attribs
   # test_car_match_data(resume, pair_set_txt, img_root, batch_size=1)
   # get_th_acc_VID(resume, pair_set_txt, img_root, batch_size=1)
-  # viz_results(resume, data_root)
-  featrue_map_test(resume,
-                   img_root,
-                   metric_func=euclidean_metric,
-                   out_ids=out_ids,
-                   out_attribs=out_attribs)
+
+  viz_results(resume, data_root, out_ids=out_ids, out_attribs=out_attribs)
+
+  # featrue_map_test(resume,
+  #                  img_root,
+  #                  metric_func=euclidean_metric,
+  #                  out_ids=out_ids,
+  #                  out_attribs=out_attribs)
   print('=> Done.')
 
 
