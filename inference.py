@@ -142,7 +142,8 @@ def viz_results(resume,
                 data_root,
                 out_ids=10086,
                 model_attr=250,
-                color_attr=27):
+                color_attr=27,
+                save_dir=''):
   """
   :param resume:
   :param data_root:
@@ -244,6 +245,11 @@ def viz_results(resume,
     pred_vid_image = io.imread(pred_vid_image_path)
     ax2 = plt.subplot(122)
     ax2.imshow(pred_vid_image)
+
+    if save_dir:
+      save_path = os.path.join(save_dir,
+                               img_name + f'-{pred_vid}-{res_vid}.png')
+      plt.savefig(save_path)
     plt.show()
 
 
