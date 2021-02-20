@@ -1,5 +1,6 @@
 # coding=utf-8
-
+"""从数据集生成需要的文件
+"""
 import os
 import pickle
 import shutil
@@ -95,7 +96,7 @@ def process2model_color(root: Path):
 
 
 # model, color: multi-label classification
-def split_train_and_test(root, TH=0.1):
+def split_train_and_test(root, test_rate=0.1):
   """
   根据ID2imgs和MC_IDS划分到新目录
   @TODO: 还需要对生成的数据集进行可视化验证
@@ -147,7 +148,7 @@ def split_train_and_test(root, TH=0.1):
                 + ' ' + str(color_id) + ' ' + str(vid) + '\n'
 
             # split to train.txt and test.txt
-            if i < int(ceil((1 - TH) * len(imgs_list))):
+            if i < int(ceil((1 - test_rate) * len(imgs_list))):
               train_txt_f_h.write(img_label)
               train_cnt += 1
             else:
@@ -323,7 +324,7 @@ def form_cls_name(root):
 def gen_test_pairs(root):
   """
   """
-  pass
+  return root
 
 
 if __name__ == '__main__':
@@ -331,7 +332,7 @@ if __name__ == '__main__':
   # split(data_root='f:/VehicleID_Part')
   root_dir = Path('./dataset/Glodon_Veh_V1.0')
   process2model_color(root_dir)
-  split_train_and_test(root_dir, TH=0.2)
+  split_train_and_test(root_dir, test_rate=0.2)
 
   # form_cls_name(root='e:/VehicleID_V1.0')
 
