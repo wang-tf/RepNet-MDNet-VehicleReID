@@ -207,8 +207,8 @@ def viz_results(resume,
 
     # 前向运算: 预测Vehicle ID
     output_id = net.forward(X=data, branch=3, label=label[:, 2])
-    print('output_id', output_id.cpu())
-    print('output_id shape', output_id.size())
+    # print('output_id', output_id.cpu())
+    # print('output_id shape', output_id.size())
     _, pred_tid = torch.max(output_id, 1)
     pred_tid = pred_tid.cpu()[0].item()
     pred_vid = trainID2Vid[pred_tid]
@@ -236,7 +236,7 @@ def viz_results(resume,
     plt.figure(figsize=(6, 6))
     ax1 = plt.subplot(121)
     ax1.imshow(img)
-    ax1.title(title)
+    plt.title(title)
 
     pred_vid_image_path = os.path.join(data_root, 'image',
                                        vid_2_images[pred_vid][0] + '.jpg')
