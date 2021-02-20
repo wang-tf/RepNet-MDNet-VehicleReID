@@ -163,8 +163,8 @@ def split_train_and_test(root, test_rate=0.1):
 
 def process_vehicleID(root, TH=15):
   """
-    统计VehicleID ID数
-    """
+  统计VehicleID ID数
+  """
   # 遍历所有图片
   img2vid_f_path = root + '/attribute/img2vid.txt'
   if os.path.isfile(img2vid_f_path):
@@ -286,38 +286,36 @@ def split(data_root, RATIO=0.1):
 
 def form_cls_name(root):
   """
-    加载类别和类别序号的映射,
-    序列化到attribute目录
-    """
-  model_names_txt = root + '/attribute/model_names.txt'
-  color_names_txt = root + '/attribute/color_names.txt'
-  if not (os.path.isfile(model_names_txt) and os.path.isfile(color_names_txt)):
+  加载类别和类别序号的映射,
+  序列化到attribute目录
+  """
+  model_names_txt = root / 'attribute/model_names.txt'
+  color_names_txt = root / 'attribute/color_names.txt'
+  if not (model_names_txt.is_file() and color_names_txt.is_file()):
     print('=> [Err]: invalid class names file.')
     return
 
-  modelID2name, colorID2name = defaultdict(str), defaultdict(str)
-  with open(model_names_txt, 'r', encoding='utf-8') as fh_1, \
-          open(color_names_txt, 'r', encoding='utf-8') as fh_2:
+  modelid_2_name, colorid_2_name = defaultdict(str), defaultdict(str)
+  with model_names_txt.open('r', encoding='utf-8') as fh_1:
     for line in fh_1.readlines():
       line = line.strip().split()
-      modelID2name[int(line[1])] = line[0]
-
+      modelid_2_name[int(line[1])] = line[0]
+    print(modelid_2_name)
+  with color_names_txt.open('r', encoding='utf-8') as fh_2:
     for line in fh_2.readlines():
       line = line.strip().split()
-      colorID2name[int(line[1])] = line[0]
-  print(modelID2name)
-  print(colorID2name)
+      colorid_2_name[int(line[1])] = line[0]
+    print(colorid_2_name)
 
   # 序列化到硬盘
-  modelID2name_path = root + '/attribute/modelID2name.pkl'
-  colorID2name_path = root + '/attribute/colorID2name.pkl'
-  with open(modelID2name_path, 'wb') as fh_1, \
-          open(colorID2name_path, 'wb') as fh_2:
-    pickle.dump(modelID2name, fh_1)
-    pickle.dump(colorID2name, fh_2)
-
-  print('=> %s dumped.' % modelID2name_path)
-  print('=> %s dumped.' % colorID2name_path)
+  modelid_2_name_path = root / 'attribute/modelID2name.pkl'
+  colorid_2_name_path = root / 'attribute/colorID2name.pkl'
+  with modelid_2_name_path.open('wb') as fh_1:
+    pickle.dump(modelid_2_name, fh_1)
+    print('=> %s dumped.' % modelid_2_name_path)
+  with colorid_2_name_path.open('wb') as fh_2:
+    pickle.dump(colorid_2_name, fh_2)
+    print('=> %s dumped.' % colorid_2_name_path)
 
 
 # ----------------- 从10086之外取test-pairs数据用来测试
@@ -333,7 +331,6 @@ if __name__ == '__main__':
   root_dir = Path('./dataset/Glodon_Veh_V1.0')
   process2model_color(root_dir)
   split_train_and_test(root_dir, test_rate=0.2)
-
-  # form_cls_name(root='e:/VehicleID_V1.0')
+  form_cls_name(root_dir)
 
   print('=> Done.')

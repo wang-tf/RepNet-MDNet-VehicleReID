@@ -63,7 +63,7 @@ class FocalLoss(nn.Module):
 
 
 # --------------------------------------- methods
-def get_predict_mc(output):
+def get_predict_mc(output, model_attr=250):
   """
     softmax归一化,然后统计每一个标签最大值索引
     :param output:
@@ -71,8 +71,8 @@ def get_predict_mc(output):
     """
   # 计算预测值
   output = output.cpu()  # 从GPU拷贝出来
-  pred_model = output[:, :250]
-  pred_color = output[:, 250:]
+  pred_model = output[:, :model_attr]
+  pred_color = output[:, model_attr:]
 
   model_idx = pred_model.max(1, keepdim=True)[1]
   color_idx = pred_color.max(1, keepdim=True)[1]
@@ -138,7 +138,11 @@ def ivt_tensor_img(input, title=None):
   return output
 
 
-def viz_results(resume, data_root, out_ids=10086, out_attribs=257):
+def viz_results(resume,
+                data_root,
+                out_ids=10086,
+                model_attr=250,
+                color_attr=27):
   """
     :param resume:
     :param data_root:
@@ -153,7 +157,7 @@ def viz_results(resume, data_root, out_ids=10086, out_attribs=257):
       'white': u'白色',
       'yellow': u'黄色'
   }
-
+  out_attribs = model_attr + color_attr
   test_set = VehicleID_All(root=data_root, transforms=None, mode='test')
   test_loader = torch.utils.data.DataLoader(dataset=test_set,
                                             batch_size=1,
@@ -200,7 +204,7 @@ def viz_results(resume, data_root, out_ids=10086, out_attribs=257):
 
     # 前向运算: 预测车型、车身颜色
     output_attrib = net.forward(X=data, branch=1, label=None)
-    pred_mc = get_predict_mc(output_attrib).cpu()[0]
+    pred_mc = get_predict_mc(output_attrib, model_attr).cpu()[0]
     pred_m_id, pred_c_id = pred_mc[0].item(), pred_mc[1].item()
     pred_m_name = modelID2name[pred_m_id]
     pred_c_name = colorID2name[pred_c_id]
@@ -700,17 +704,20 @@ def main():
   # resume = './models/pretrain_epoch_14.pth'
   pair_set_txt = './test_pair_set.txt'
   # data_root = './dataset/VehicleID_V1.0'
-  resume = './checkpoint/epoch30.pth'
+  resume = './checkpoints/epoch_31.pth'
   data_root = './dataset/Glodon_Veh_V1.0'
   img_root = os.path.join(data_root, 'image')
   out_ids = 105
   model_attribs = 25
   color_attribs = 7
-  out_attribs = model_attribs + color_attribs
   # test_car_match_data(resume, pair_set_txt, img_root, batch_size=1)
   # get_th_acc_VID(resume, pair_set_txt, img_root, batch_size=1)
 
-  viz_results(resume, data_root, out_ids=out_ids, out_attribs=out_attribs)
+  viz_results(resume,
+              data_root,
+              out_ids=out_ids,
+              model_attr=model_attribs,
+              color_attr=color_attribs)
 
   # featrue_map_test(resume,
   #                  img_root,
